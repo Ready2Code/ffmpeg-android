@@ -20,6 +20,9 @@
 #ifndef AVFORMAT_AVIO_H
 #define AVFORMAT_AVIO_H
 
+#define IO_BUFFER_SIZE 32768
+
+
 /**
  * @file
  * @ingroup lavf_io
@@ -181,6 +184,7 @@ typedef struct AVIOContext {
     int (*read_packet)(void *opaque, uint8_t *buf, int buf_size);
     int (*write_packet)(void *opaque, uint8_t *buf, int buf_size);
     int64_t (*seek)(void *opaque, int64_t offset, int whence);
+    void (*set)(void *opaque, AVDictionary *options); /*<smt added, also can be used for other protocol*/
     int64_t pos;            /**< position in the file of the current buffer */
     int must_flush;         /**< true if the next seek should flush */
     int eof_reached;        /**< true if eof reached */

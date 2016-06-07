@@ -76,6 +76,7 @@ typedef struct URLProtocol {
      */
     int     (*url_read)( URLContext *h, unsigned char *buf, int size);
     int     (*url_write)(URLContext *h, const unsigned char *buf, int size);
+    int64_t (*url_set)(URLContext *h, AVDictionary *options); //add for smt
     int64_t (*url_seek)( URLContext *h, int64_t pos, int whence);
     int     (*url_close)(URLContext *h);
     struct URLProtocol *next;
@@ -198,6 +199,18 @@ int ffurl_read_complete(URLContext *h, unsigned char *buf, int size);
  */
 int ffurl_write(URLContext *h, const unsigned char *buf, int size);
 
+
+/**
+ * set option if needed. used for smt protocol now. 
+ * in the future can be extended for other protocol
+ *
+ * @return the number of bytes actually written, or a negative value
+ * corresponding to an AVERROR code in case of failure
+ */
+
+int64_t ffurl_set(URLContext *h, AVDictionary *options); 
+
+
 /**
  * Change the position that will be used by the next read/write
  * operation on the resource accessed by h.
@@ -212,6 +225,7 @@ int ffurl_write(URLContext *h, const unsigned char *buf, int size);
  * the beginning of the file. You can use this feature together with
  * SEEK_CUR to read the current file position.
  */
+
 int64_t ffurl_seek(URLContext *h, int64_t pos, int whence);
 
 /**
@@ -279,6 +293,11 @@ URLProtocol *ffurl_protocol_next(const URLProtocol *prev);
 /* udp.c */
 int ff_udp_set_remote_url(URLContext *h, const char *uri);
 int ff_udp_get_local_port(URLContext *h);
+
+/* smt.c*/
+int ff_smt_set_remote_url(URLContext *h, const char *uri);
+int ff_smt_get_local_port(URLContext *h);
+
 
 /**
  * Assemble a URL string from components. This is the reverse operation

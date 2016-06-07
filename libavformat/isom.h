@@ -190,6 +190,8 @@ typedef struct MOVContext {
     int found_mdat;       ///< 'mdat' atom has been found
     int found_hdlr_mdta;  ///< 'hdlr' atom with type 'mdta' has been found
     int trak_index;       ///< Index of the current 'trak'
+    int found_trak;
+	int found_trex;
     char **meta_keys;
     unsigned meta_keys_count;
     DVDemuxContext *dv_demux;
@@ -227,7 +229,11 @@ typedef struct MOVContext {
     struct AVAES *aes_decrypt;
     uint8_t *decryption_key;
     int decryption_key_len;
-    int enable_drefs;
+    int sequence_number;
+    char asset_id[128];
+	int64_t base_data_offset;
+	int is_mpu;
+	int enable_drefs;
 } MOVContext;
 
 int ff_mp4_read_descr_len(AVIOContext *pb);

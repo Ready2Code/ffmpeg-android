@@ -1066,12 +1066,13 @@ static int mov_read_moov(MOVContext *c, AVIOContext *pb, MOVAtom atom)
 {
     int ret;
 
-    if (c->found_moov) {
+    if (c->found_moov && !c->is_mpu) {
         av_log(c->fc, AV_LOG_WARNING, "Found duplicated MOOV Atom. Skipped it\n");
         avio_skip(pb, atom.size);
         return 0;
     }
-
+	c->found_trak = 0;
+	c->found_trex = 0;
     if ((ret = mov_read_default(c, pb, atom)) < 0)
         return ret;
     /* we parsed the 'moov' atom, we can terminate the parsing as soon as we find the 'mdat' */
@@ -3010,6 +3011,11 @@ static int mov_read_trak(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     MOVStreamContext *sc;
     int ret;
 
+	if(c->is_mpu){
+		if(c->found_trak)
+			return 0;
+		c->found_trak = 1;
+	}
     st = avformat_new_stream(c->fc, NULL);
     if (!st) return AVERROR(ENOMEM);
     st->id = c->fc->nb_streams;
@@ -3398,6 +3404,7 @@ static int mov_read_tfhd(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     MOVTrackExt *trex = NULL;
     MOVFragmentIndex* index = NULL;
     int flags, track_id, i, found = 0;
+    int gotten_base_offset;
 
     avio_r8(pb); /* version */
     flags = avio_rb24(pb);
@@ -3416,9 +3423,14 @@ static int mov_read_tfhd(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         return AVERROR_INVALIDDATA;
     }
 
-    frag->base_data_offset = flags & MOV_TFHD_BASE_DATA_OFFSET ?
-                             avio_rb64(pb) : flags & MOV_TFHD_DEFAULT_BASE_IS_MOOF ?
-                             frag->moof_offset : frag->implicit_offset;
+    gotten_base_offset = avio_rb64(pb);
+    if(c->is_mpu) // from second moof, we are not consider mpu header.
+        frag->base_data_offset = frag->moof_offset;
+    else
+	    frag->base_data_offset = flags & MOV_TFHD_BASE_DATA_OFFSET ?
+	                             gotten_base_offset : flags & MOV_TFHD_DEFAULT_BASE_IS_MOOF ?
+	                             frag->moof_offset : frag->implicit_offset;
+	
     frag->stsd_id  = flags & MOV_TFHD_STSD_ID ? avio_rb32(pb) : trex->stsd_id;
 
     frag->duration = flags & MOV_TFHD_DEFAULT_DURATION ?
@@ -3470,6 +3482,12 @@ static int mov_read_trex(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     MOVTrackExt *trex;
     int err;
 
+	if(c->is_mpu){
+		if(c->found_trex)
+			return 0;
+		c->found_trex = 1;
+	}
+	
     if ((uint64_t)c->trex_count+1 >= UINT_MAX / sizeof(*c->trex_data))
         return AVERROR_INVALIDDATA;
     if ((err = av_reallocp_array(&c->trex_data, c->trex_count + 1,
@@ -3497,6 +3515,7 @@ static int mov_read_tfdt(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     AVStream *st = NULL;
     MOVStreamContext *sc;
     int version, i;
+    int64_t base_media_decode_time;
 
     for (i = 0; i < c->fc->nb_streams; i++) {
         if (c->fc->streams[i]->id == frag->track_id) {
@@ -3513,10 +3532,15 @@ static int mov_read_tfdt(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         return 0;
     version = avio_r8(pb);
     avio_rb24(pb); /* flags */
+
     if (version) {
-        sc->track_end = avio_rb64(pb);
+        base_media_decode_time = avio_rb64(pb);
     } else {
-        sc->track_end = avio_rb32(pb);
+        base_media_decode_time = avio_rb32(pb);
+    }
+
+    if(!c->is_mpu){ //smt is treated as stream, we don't need get base media decode time from file
+        sc->track_end = base_media_decode_time;
     }
     return 0;
 }
@@ -4084,6 +4108,27 @@ static int mov_read_senc(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     return av_aes_ctr_init(sc->cenc.aes_ctr, c->decryption_key);
 }
 
+static int mov_read_mmpu(MOVContext *c, AVIOContext *pb, MOVAtom atom)
+{
+    int version;
+    int flag;
+    int is_completed;
+    //int reserved;
+    int scheme, length;
+    version = avio_r8(pb);
+    flag = avio_rb24(pb);
+    is_completed = avio_r8(pb);
+    //reserved = avio_r8(pb);
+    c->sequence_number = avio_rb32(pb);
+    scheme = avio_rb32(pb);
+    length = avio_rb32(pb);
+    memset(c->asset_id, 0, 128);
+    avio_read(pb, c->asset_id, length);
+	c->is_mpu = 1;
+    return 0;
+}
+
+
 static int cenc_filter(MOVContext *c, MOVStreamContext *sc, uint8_t *input, int size)
 {
     uint32_t encrypted_bytes;
@@ -4227,6 +4272,7 @@ static const MOVParseTableEntry mov_default_parse_table[] = {
 { MKTAG('s','i','n','f'), mov_read_default },
 { MKTAG('f','r','m','a'), mov_read_frma },
 { MKTAG('s','e','n','c'), mov_read_senc },
+{ MKTAG('m','m','p','u'), mov_read_mmpu },
 { 0, NULL }
 };
 
@@ -4402,6 +4448,11 @@ static int mov_probe(AVProbeData *p)
         case MKTAG('p','r','f','l'):
             /* if we only find those cause probedata is too small at least rate them */
             score  = FFMAX(score, AVPROBE_SCORE_EXTENSION);
+            offset = FFMAX(4, AV_RB32(p->buf+offset)) + offset;
+            break;
+        case MKTAG('m','m','p','u'):
+            /*I think we should do something here. But currently I am not sure the exactly scenario*/
+            score = AVPROBE_SCORE_MAX;
             offset = FFMAX(4, AV_RB32(p->buf+offset)) + offset;
             break;
         default:
@@ -4765,6 +4816,7 @@ static int mov_read_header(AVFormatContext *s)
     MOVAtom atom = { AV_RL32("root") };
     int i;
 
+	mov->is_mpu = 0;
     if (mov->decryption_key_len != 0 && mov->decryption_key_len != AES_CTR_KEY_SIZE) {
         av_log(s, AV_LOG_ERROR, "Invalid decryption key len %d expected %d\n",
             mov->decryption_key_len, AES_CTR_KEY_SIZE);
@@ -4917,6 +4969,11 @@ static int mov_read_header(AVFormatContext *s)
     }
     ff_configure_buffers_for_index(s, AV_TIME_BASE);
 
+    if(mov->is_mpu){
+        for(i = 0; i < s->nb_streams; i++){
+            s->streams[i]->duration = AV_NOPTS_VALUE;
+        }
+    }
     return 0;
 }
 
@@ -5030,12 +5087,15 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
     AVIndexEntry *sample;
     AVStream *st = NULL;
     int ret;
+    int find_new_moof_in_smt_stream = 0;
     mov->fc = s;
  retry:
     sample = mov_find_next_sample(s, &st);
     if (!sample || (mov->next_root_atom && sample->pos > mov->next_root_atom)) {
         if (!mov->next_root_atom)
             return AVERROR_EOF;
+		if(mov->is_mpu)
+			mov->base_data_offset = mov->next_root_atom;
         if ((ret = mov_switch_root(s, mov->next_root_atom)) < 0)
             return ret;
         goto retry;
@@ -5050,8 +5110,9 @@ static int mov_read_packet(AVFormatContext *s, AVPacket *pkt)
     }
 
     if (st->discard != AVDISCARD_ALL) {
-        int64_t ret64 = avio_seek(sc->pb, sample->pos, SEEK_SET);
-        if (ret64 != sample->pos) {
+		//av_log(mov->fc, AV_LOG_INFO, "sample pos %x \n", sample->pos);
+		int64_t ret64 = avio_seek(sc->pb, sample->pos, SEEK_SET);
+        if (ret64 != sample->pos && !find_new_moof_in_smt_stream) {
             av_log(mov->fc, AV_LOG_ERROR, "stream %d, offset 0x%"PRIx64": partial file\n",
                    sc->ffindex, sample->pos);
             sc->current_sample -= should_retry(sc->pb, ret64);
@@ -5284,11 +5345,11 @@ static const AVClass mov_class = {
 };
 
 AVInputFormat ff_mov_demuxer = {
-    .name           = "mov,mp4,m4a,3gp,3g2,mj2",
+    .name           = "mov,mp4,m4a,3gp,3g2,mj2,mpu",
     .long_name      = NULL_IF_CONFIG_SMALL("QuickTime / MOV"),
     .priv_class     = &mov_class,
     .priv_data_size = sizeof(MOVContext),
-    .extensions     = "mov,mp4,m4a,3gp,3g2,mj2",
+    .extensions     = "mov,mp4,m4a,3gp,3g2,mj2,mpu",
     .read_probe     = mov_probe,
     .read_header    = mov_read_header,
     .read_packet    = mov_read_packet,

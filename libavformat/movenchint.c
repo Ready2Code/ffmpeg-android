@@ -34,7 +34,10 @@ int ff_mov_init_hinting(AVFormatContext *s, int index, int src_index)
     AVStream *src_st    = s->streams[src_index];
     int ret = AVERROR(ENOMEM);
 
-    track->tag = MKTAG('r','t','p',' ');
+    if(mov->mode == MODE_MPU)
+        track->tag = MKTAG('s','m','t',' ');
+    else
+        track->tag = MKTAG('r','t','p',' ');
     track->src_track = src_index;
 
     track->enc = avcodec_alloc_context3(NULL);

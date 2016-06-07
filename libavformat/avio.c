@@ -443,6 +443,16 @@ int ffurl_write(URLContext *h, const unsigned char *buf, int size)
                                   h->prot->url_write);
 }
 
+
+int64_t ffurl_set(URLContext *h, AVDictionary *options) //add for smt
+{
+    if (!h->prot->url_set)
+        return AVERROR(ENOSYS);
+
+    return h->prot->url_set(h, options);
+}
+
+
 int64_t ffurl_seek(URLContext *h, int64_t pos, int whence)
 {
     int64_t ret;

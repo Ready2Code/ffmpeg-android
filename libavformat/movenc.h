@@ -42,6 +42,7 @@
 #define MODE_IPOD 0x20
 #define MODE_ISM  0x40
 #define MODE_F4V  0x80
+#define MODE_MPU  0x100
 
 typedef struct MOVIentry {
     uint64_t     pos;
@@ -178,6 +179,7 @@ typedef struct MOVMuxContext {
     int iods_audio_profile;
 
     int moov_written;
+    int mmpu_written;
     int fragments;
     int max_fragment_duration;
     int min_fragment_duration;
@@ -208,7 +210,9 @@ typedef struct MOVMuxContext {
     int encryption_key_len;
     uint8_t *encryption_kid;
     int encryption_kid_len;
-
+	int current_nb_stream;
+	int current_mpu_seq[10];
+	char *asset;
 } MOVMuxContext;
 
 #define FF_MOV_FLAG_RTP_HINT              (1 <<  0)
@@ -228,6 +232,8 @@ typedef struct MOVMuxContext {
 #define FF_MOV_FLAG_GLOBAL_SIDX           (1 << 14)
 #define FF_MOV_FLAG_WRITE_COLR            (1 << 15)
 #define FF_MOV_FLAG_WRITE_GAMA            (1 << 16)
+#define FF_MOV_FLAG_SMT_HINT              (1 << 17)
+
 
 int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt);
 

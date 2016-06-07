@@ -800,6 +800,7 @@ int ffio_fdopen(AVIOContext **s, URLContext *h)
         av_free(buffer);
         return AVERROR(ENOMEM);
     }
+    (*s)->set = ffurl_set;
     (*s)->protocol_whitelist = av_strdup(h->protocol_whitelist);
     if (!(*s)->protocol_whitelist && h->protocol_whitelist) {
         avio_closep(s);

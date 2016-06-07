@@ -348,6 +348,7 @@ void av_register_all(void)
     REGISTER_DEMUXER (XWMA,             xwma);
     REGISTER_DEMUXER (YOP,              yop);
     REGISTER_MUXDEMUX(YUV4MPEGPIPE,     yuv4mpegpipe);
+    REGISTER_MUXER   (MPU,              mpu);
 
     /* image demuxers */
     REGISTER_DEMUXER (IMAGE_BMP_PIPE,        image_bmp_pipe);
@@ -405,6 +406,7 @@ void av_register_all(void)
     REGISTER_PROTOCOL(UDP,              udp);
     REGISTER_PROTOCOL(UDPLITE,          udplite);
     REGISTER_PROTOCOL(UNIX,             unix);
+    REGISTER_PROTOCOL(SMT,              smt);
 
     /* external libraries */
     REGISTER_MUXER   (CHROMAPRINT,      chromaprint);
